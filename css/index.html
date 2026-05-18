@@ -1,0 +1,449 @@
+<!-- 
+  ============================================================================
+  北京交通大学智慧食堂实时动态监测系统 - 前端页面
+  技术栈: HTML5 + Tailwind CSS 3 + JavaScript (ES6+)
+  功能: 实时显示食堂窗口排队情况、餐桌占用状态、统计数据
+  更新频率: 每3秒自动刷新一次数据
+  ============================================================================
+-->
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <!-- 字符编码设置为UTF-8，确保中文正常显示 -->
+    <meta charset="UTF-8">
+    
+    <!-- 响应式设计设置：viewport宽度等于设备宽度，初始缩放比例为1 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <!-- 网页标题，显示在浏览器标签上 -->
+    <title>北京交通大学智慧食堂</title>
+    
+    <!-- 引入 Tailwind CSS 3 的 CDN 版本 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 自定义CSS样式 -->
+    <style>
+        /* 
+           餐桌网格布局样式：
+           - 使用CSS Grid创建10列8行的网格
+           - 每个单元格大小为60px
+           - 单元格之间间距为10px
+        */
+        .grid-layout {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);  /* 10列，每列等宽 */
+            grid-template-rows: repeat(8, 60px);     /* 8行，每行60px高 */
+            gap: 10px;                               /* 单元格间距 */
+        }
+
+        /* 
+           排队小人样式：
+           - 圆形红色图标，表示排队的人
+           - 添加脉冲动画效果，让小人看起来有活力
+        */
+        .person {
+            width: 12px;                    /* 宽度 */
+            height: 12px;                   /* 高度 */
+            background: #ef4444;            /* 红色背景 */
+            border-radius: 50%;             /* 圆形 */
+            display: inline-block;          /* 行内块元素 */
+            margin-right: 2px;              /* 右边距 */
+            animation: pulse 1.5s infinite; /* 脉冲动画，1.5秒循环一次 */
+        }
+
+        /* 
+           脉冲动画关键帧：
+           - 0%: 正常大小，完全不透明
+           - 50%: 放大1.2倍，透明度70%
+           - 100%: 恢复正常大小和透明度
+        */
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* 
+           餐桌样式：
+           - 添加过渡动画效果，切换状态时更平滑
+        */
+        .table {
+            transition: all 0.5s ease;  /* 所有属性变化都有0.5秒的过渡效果 */
+        }
+
+        /* 
+           餐桌状态样式：
+           - table-occupied: 占用状态（红色背景）
+           - table-empty: 空闲状态（绿色背景）
+           - table-maintenance: 维护状态（黄色背景）
+        */
+        .table-occupied { background-color: #fee2e2; border: 2px solid #ef4444; }
+        .table-empty { background-color: #dcfce7; border: 2px solid #22c55e; }
+        .table-maintenance { background-color: #fef3c7; border: 2px solid #f59e0b; }
+
+        /* 
+           统计卡片样式：
+           - 添加悬停效果，鼠标移上去会向上移动并显示阴影
+        */
+        .stat-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);           /* 向上移动5px */
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3); /* 添加阴影效果 */
+        }
+    </style>
+</head>
+
+<!-- 
+   页面主体：
+   - 使用 Tailwind CSS 的深色主题背景（bg-slate-900）
+   - 文字颜色为白色（text-white）
+   - 内边距为6个单位（p-6）
+-->
+<body class="bg-slate-900 text-white p-6">
+
+    <!-- 
+       主容器：
+       - 最大宽度为7xl（约1280px）
+       - 水平居中（mx-auto）
+    -->
+    <div class="max-w-7xl mx-auto">
+
+        <!-- 
+           页面头部（header）：
+           - 包含标题和图例说明
+           - 使用flex布局，两端对齐
+        -->
+        <header class="mb-8 flex justify-between items-end">
+            <!-- 标题区域 -->
+            <div>
+                <h1 class="text-3xl font-bold text-blue-400">BJTU智慧食堂实时动态监测</h1>
+                <p class="text-slate-400">数据每 3 秒自动更新一次</p>
+            </div>
+            
+            <!-- 图例说明 -->
+            <div class="flex space-x-6 text-sm">
+                <div class="flex items-center"><span class="w-3 h-3 bg-green-500 rounded-full mr-2"></span>空闲</div>
+                <div class="flex items-center"><span class="w-3 h-3 bg-red-500 rounded-full mr-2"></span>占用</div>
+                <div class="flex items-center"><span class="w-3 h-3 bg-yellow-500 rounded-full mr-2"></span>维护中</div>
+            </div>
+        </header>
+
+        <!-- 
+           统计卡片区域：
+           - 使用grid布局，4列显示
+           - 包含：总人数、用餐桌数、空闲桌数、平均等待时间
+        -->
+        <section class="grid grid-cols-4 gap-4 mb-8">
+            <!-- 总人数卡片 -->
+            <div class="stat-card bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="text-slate-400 text-sm mb-1">总人数</div>
+                <div id="stat-people" class="text-2xl font-bold text-blue-400">--</div>
+            </div>
+            
+            <!-- 用餐桌数卡片 -->
+            <div class="stat-card bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="text-slate-400 text-sm mb-1">用餐桌数</div>
+                <div id="stat-occupied" class="text-2xl font-bold text-green-400">--</div>
+            </div>
+            
+            <!-- 空闲桌数卡片 -->
+            <div class="stat-card bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="text-slate-400 text-sm mb-1">空闲桌数</div>
+                <div id="stat-empty" class="text-2xl font-bold text-red-400">--</div>
+            </div>
+            
+            <!-- 平均等待时间卡片 -->
+            <div class="stat-card bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="text-slate-400 text-sm mb-1">平均等待</div>
+                <div id="stat-wait" class="text-2xl font-bold text-yellow-400">--</div>
+            </div>
+        </section>
+
+        <!-- 
+           窗口排队区域：
+           - 使用grid布局，4列显示
+           - 共8个窗口卡片
+           - 每个卡片显示窗口名称、等待时间、排队人数可视化
+        -->
+        <section class="grid grid-cols-4 gap-4 mb-10">
+            <!-- 1号窗口 -->
+            <div id="window-1" class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="flex justify-between mb-2">
+                    <span class="font-bold">1号窗口</span>
+                    <span class="text-xs text-slate-400">--</span> <!-- 等待时间显示位置 -->
+                </div>
+                <div class="text-sm text-slate-400 mb-2" id="window-1-name">加载中...</div> <!-- 窗口名称 -->
+                <div id="queue-1" class="h-8 flex items-center overflow-hidden bg-slate-900 rounded px-2"></div> <!-- 排队小人区域 -->
+            </div>
+
+            <!-- 2号窗口 -->
+            <div id="window-2" class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="flex justify-between mb-2">
+                    <span class="font-bold">2号窗口</span>
+                    <span class="text-xs text-slate-400">--</span>
+                </div>
+                <div class="text-sm text-slate-400 mb-2" id="window-2-name">加载中...</div>
+                <div id="queue-2" class="h-8 flex items-center overflow-hidden bg-slate-900 rounded px-2"></div>
+            </div>
+
+            <!-- 3号窗口 -->
+            <div id="window-3" class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="flex justify-between mb-2">
+                    <span class="font-bold">3号窗口</span>
+                    <span class="text-xs text-slate-400">--</span>
+                </div>
+                <div class="text-sm text-slate-400 mb-2" id="window-3-name">加载中...</div>
+                <div id="queue-3" class="h-8 flex items-center overflow-hidden bg-slate-900 rounded px-2"></div>
+            </div>
+
+            <!-- 4号窗口 -->
+            <div id="window-4" class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="flex justify-between mb-2">
+                    <span class="font-bold">4号窗口</span>
+                    <span class="text-xs text-slate-400">--</span>
+                </div>
+                <div class="text-sm text-slate-400 mb-2" id="window-4-name">加载中...</div>
+                <div id="queue-4" class="h-8 flex items-center overflow-hidden bg-slate-900 rounded px-2"></div>
+            </div>
+
+            <!-- 5号窗口 -->
+            <div id="window-5" class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="flex justify-between mb-2">
+                    <span class="font-bold">5号窗口</span>
+                    <span class="text-xs text-slate-400">--</span>
+                </div>
+                <div class="text-sm text-slate-400 mb-2" id="window-5-name">加载中...</div>
+                <div id="queue-5" class="h-8 flex items-center overflow-hidden bg-slate-900 rounded px-2"></div>
+            </div>
+
+            <!-- 6号窗口 -->
+            <div id="window-6" class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="flex justify-between mb-2">
+                    <span class="font-bold">6号窗口</span>
+                    <span class="text-xs text-slate-400">--</span>
+                </div>
+                <div class="text-sm text-slate-400 mb-2" id="window-6-name">加载中...</div>
+                <div id="queue-6" class="h-8 flex items-center overflow-hidden bg-slate-900 rounded px-2"></div>
+            </div>
+
+            <!-- 7号窗口 -->
+            <div id="window-7" class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="flex justify-between mb-2">
+                    <span class="font-bold">7号窗口</span>
+                    <span class="text-xs text-slate-400">--</span>
+                </div>
+                <div class="text-sm text-slate-400 mb-2" id="window-7-name">加载中...</div>
+                <div id="queue-7" class="h-8 flex items-center overflow-hidden bg-slate-900 rounded px-2"></div>
+            </div>
+
+            <!-- 8号窗口 -->
+            <div id="window-8" class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <div class="flex justify-between mb-2">
+                    <span class="font-bold">8号窗口</span>
+                    <span class="text-xs text-slate-400">--</span>
+                </div>
+                <div class="text-sm text-slate-400 mb-2" id="window-8-name">加载中...</div>
+                <div id="queue-8" class="h-8 flex items-center overflow-hidden bg-slate-900 rounded px-2"></div>
+            </div>
+        </section>
+
+        <!-- 
+           餐桌布局区域：
+           - 使用自定义的grid-layout样式创建10x8的网格
+           - 共80张桌子，由JavaScript动态生成
+        -->
+        <h2 class="text-xl mb-4 font-bold text-slate-300 ml-2">大厅餐桌分布 (实时热力)</h2>
+        <div id="table-map" class="grid-layout bg-slate-800 p-6 rounded-3xl border border-slate-700">
+            <!-- 由 JS 生成 80 张桌子 -->
+        </div>
+    </div>
+
+    <!-- 
+       JavaScript 代码区域：
+       - 负责从后端API获取数据
+       - 更新页面显示
+       - 定时刷新数据（每3秒）
+    -->
+    <script>
+        // API基础地址，指向后端服务器
+        // 如果后端服务运行在其他地址，需要修改这里
+        const API_BASE = 'http://localhost:8888/api';
+
+        /**
+         * 从API获取窗口数据
+         * 使用async/await语法进行异步请求
+         */
+        async function fetchWindows() {
+            try {
+                // 发送GET请求到 /api/windows
+                const response = await fetch(`${API_BASE}/windows`);
+                // 将响应转换为JSON格式
+                const data = await response.json();
+                // 更新窗口显示
+                updateWindows(data);
+            } catch (error) {
+                // 如果请求失败，在控制台输出错误信息
+                console.error('获取窗口数据失败:', error);
+            }
+        }
+
+        /**
+         * 更新窗口显示
+         * @param {Array} windows - 窗口数据数组
+         */
+        function updateWindows(windows) {
+            // 遍历每个窗口数据
+            windows.forEach(win => {
+                // 获取对应的DOM元素
+                const nameEl = document.getElementById(`window-${win.id}-name`);  // 窗口名称元素
+                const timeEl = document.querySelector(`#window-${win.id} .text-xs`); // 等待时间元素
+                const queueEl = document.getElementById(`queue-${win.id}`);        // 排队区域元素
+                
+                // 更新窗口名称
+                if (nameEl) nameEl.textContent = win.name;
+                
+                // 更新等待时间和状态
+                if (timeEl) {
+                    // 如果窗口关闭，显示"已关闭"，否则显示等待时间
+                    timeEl.textContent = win.status === 'closed' ? '已关闭' : `预计等待 ${win.waitTime}`;
+                    // 关闭状态显示红色，否则显示灰色
+                    timeEl.style.color = win.status === 'closed' ? '#ef4444' : '#9ca3af';
+                }
+                
+                // 更新排队小人显示
+                if (queueEl) {
+                    // 清空之前的排队小人
+                    queueEl.innerHTML = '';
+                    
+                    if (win.status === 'closed') {
+                        // 窗口关闭时显示提示文字
+                        queueEl.innerHTML = '<span class="text-red-400 text-xs">窗口关闭</span>';
+                    } else {
+                        // 根据排队人数生成对应数量的小人
+                        for (let j = 0; j < win.queueCount; j++) {
+                            const person = document.createElement('div');
+                            person.className = 'person';
+                            // 排队人数超过10人时显示红色，否则显示蓝色
+                            person.style.backgroundColor = win.queueCount > 10 ? '#f87171' : '#60a5fa';
+                            queueEl.appendChild(person);
+                        }
+                    }
+                }
+            });
+        }
+
+        /**
+         * 从API获取餐桌数据
+         */
+        async function fetchTables() {
+            try {
+                const response = await fetch(`${API_BASE}/tables`);
+                const data = await response.json();
+                updateTables(data);
+            } catch (error) {
+                console.error('获取餐桌数据失败:', error);
+            }
+        }
+
+        /**
+         * 更新餐桌显示
+         * @param {Array} tables - 餐桌数据数组
+         */
+        function updateTables(tables) {
+            // 获取所有餐桌元素
+            const tableElements = document.querySelectorAll('.table');
+            
+            // 遍历每个餐桌元素
+            tableElements.forEach((table, index) => {
+                // 获取对应的餐桌数据
+                const tableData = tables[index];
+                if (!tableData) return;
+                
+                // 先移除所有状态类
+                table.classList.remove('table-empty', 'table-occupied', 'table-maintenance');
+                
+                // 随机决定是否为维护状态（2%概率）
+                if (Math.random() > 0.98) {
+                    table.classList.add('table-maintenance');
+                    table.innerHTML = '<i class="fas fa-wrench text-yellow-600 text-xs"></i>';
+                } else if (tableData.isOccupied) {
+                    // 餐桌被占用
+                    table.classList.add('table-occupied');
+                    table.innerHTML = `<i class="fas fa-user-friends text-red-500 text-xs"></i> ${tableData.currentPeople}/4`;
+                } else {
+                    // 餐桌空闲
+                    table.classList.add('table-empty');
+                    table.innerHTML = '<i class="fas fa-chair text-green-600 text-xs"></i>';
+                }
+            });
+        }
+
+        /**
+         * 从API获取统计数据
+         */
+        async function fetchStatistics() {
+            try {
+                const response = await fetch(`${API_BASE}/statistics`);
+                const data = await response.json();
+                updateStatistics(data);
+            } catch (error) {
+                console.error('获取统计数据失败:', error);
+            }
+        }
+
+        /**
+         * 更新统计数据显示
+         * @param {Object} stats - 统计数据对象
+         */
+        function updateStatistics(stats) {
+            document.getElementById('stat-people').textContent = stats.totalPeople;
+            document.getElementById('stat-occupied').textContent = stats.occupiedTables;
+            document.getElementById('stat-empty').textContent = stats.emptyTables;
+            document.getElementById('stat-wait').textContent = `${stats.avgWaitTime}min`;
+        }
+
+        /**
+         * 初始化餐桌布局
+         * 创建80个餐桌元素
+         */
+        function initMap() {
+            const map = document.getElementById('table-map');
+            // 创建80个餐桌（10列 x 8行）
+            for (let i = 0; i < 80; i++) {
+                const table = document.createElement('div');
+                table.className = 'table rounded-lg flex items-center justify-center cursor-pointer hover:scale-110 transition';
+                map.appendChild(table);
+            }
+        }
+
+        /**
+         * 综合更新函数
+         * 同时获取并更新所有数据
+         */
+        async function updateData() {
+            // 使用Promise.all同时发起多个请求，提高效率
+            await Promise.all([
+                fetchWindows(),
+                fetchTables(),
+                fetchStatistics()
+            ]);
+        }
+
+        /**
+         * 页面初始化流程：
+         * 1. 初始化餐桌布局（创建80个餐桌元素）
+         * 2. 第一次获取并显示数据
+         * 3. 设置定时任务，每3秒更新一次数据
+         */
+        initMap();           // 初始化餐桌布局
+        updateData();        // 首次获取数据
+        setInterval(updateData, 3000);  // 每3秒自动更新
+    </script>
+
+    <!-- 引入 Font Awesome 图标库 -->
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+</body>
+</html>
